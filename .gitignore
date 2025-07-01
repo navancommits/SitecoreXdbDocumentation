@@ -1,0 +1,25 @@
+[Bb]in
+[Oo]bj
+[Tt]est[Rr]esults
+.vs
+*.mdf
+*.ldf
+*.suo
+*.user
+*.[Cc]ache
+*[Rr]esharper*
+packages
+NuGet.exe
+_[Ss]cripts
+*.exe
+
+# Allow dlls in a ref folder
+!Sitecore.Documentation/Sitecore.Documentation/sitecorerefdlls/
+
+*.nupkg
+*.ncrunchsolution
+*.dot[Cc]over
+*.pubxml
+*.zip
+*launchSettings.json
+*.binlog
