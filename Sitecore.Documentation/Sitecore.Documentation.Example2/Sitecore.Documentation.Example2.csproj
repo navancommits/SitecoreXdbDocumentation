@@ -4,7 +4,7 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{044E337B-1E20-44D5-B7C3-18A8E6B17A29}</ProjectGuid>
+    <ProjectGuid>{63C6BE06-CD3C-43F1-810A-8D1BE8F95C2C}</ProjectGuid>
     <OutputType>Exe</OutputType>
     <RootNamespace>Sitecore.Documentation</RootNamespace>
     <AssemblyName>Sitecore.Documentation</AssemblyName>

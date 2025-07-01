@@ -9,8 +9,8 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Threading.Tasks;
 /*
- * Establish contact between the Sitecore.Documentation app and your XConnect instance
- * https://doc.sitecore.com/xp/en/developers/104/sitecore-experience-platform/walkthrough--creating-a-contact-and-an-interaction.html#establish-contact-between-the-sitecoredocumentation-app-and-your-xconnect-instance
+ * Create an interaction with a single event
+ * https://doc.sitecore.com/xp/en/developers/104/sitecore-experience-platform/walkthrough--creating-a-contact-and-an-interaction.html#create-an-interaction-with-a-single-event
  */
 
 namespace Sitecore.Documentation
@@ -69,7 +69,7 @@ namespace Sitecore.Documentation
 
             try
             {
-                await cfg.InitializeAsync();
+                cfg.Initialize();
 
                 // Print xConnect if configuration is valid
                 var arr = new[]
@@ -100,8 +100,67 @@ namespace Sitecore.Documentation
             {
                 try
                 {
-                    // This is where we add content in later code samples
-                    Console.WriteLine("connection successful");
+                    var offlineGoal = Guid.Parse("ad8ab7fe-ab48-4ea9-a976-ae7a268ae2f0"); // "Watched demo" goal
+                    var channelId = Guid.Parse("110cbf07-6b1a-4743-a398-6749acfcd7aa"); // "Other event" channel
+
+                    // Identifier for a 'known' contact
+                    var identifier = new ContactIdentifier[]
+                    {
+                        new ContactIdentifier(
+                            "twitter",
+                            "myrtlesitecore" + Guid.NewGuid().ToString("N"),
+                            ContactIdentifierType.Known
+                        )
+                    };
+
+                    // Print out the identifier that is going to be used
+                    Console.WriteLine("Contact Identifier: " + identifier[0].Identifier);
+
+                    // Create a new contact with the identifier
+                    Contact knownContact = new Contact(identifier);
+
+                    PersonalInformation personalInfoFacet = new PersonalInformation();
+
+                    personalInfoFacet.FirstName = "Myrtle";
+                    personalInfoFacet.LastName = "McSitecore";
+                    personalInfoFacet.JobTitle = "Programmer Writer";
+
+                    client.SetFacet<PersonalInformation>(
+                        knownContact,
+                        PersonalInformation.DefaultFacetKey,
+                        personalInfoFacet
+                    );
+
+                    client.AddContact(knownContact);
+
+                    // Create a new interaction for that contact
+                    Interaction interaction = new Interaction(knownContact, InteractionInitiator.Brand, channelId, "");
+
+                    // Add events - all interactions must have at least one event
+                    var xConnectEvent = new Goal(offlineGoal, DateTime.UtcNow);
+                    interaction.Events.Add(xConnectEvent);
+
+                    // Add the contact and interaction
+                    client.AddInteraction(interaction);
+
+                    // Submit contact and interaction - a total of two operations
+                    await client.SubmitAsync();
+
+                    // Get the last batch that was executed
+                    var operations = client.LastBatch;
+
+                    // Loop through operations and check status
+                    foreach (var operation in operations)
+                    {
+                        Console.WriteLine(
+                            operation.OperationType
+                            + operation.Target.GetType().ToString()
+                            + " Operation: "
+                            + operation.Status
+                        );
+                    }
+
+                    Console.ReadLine();
                 }
                 catch (XdbExecutionException ex)
                 {

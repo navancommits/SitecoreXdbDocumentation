@@ -9,10 +9,9 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Threading.Tasks;
 /*
- * Establish contact between the Sitecore.Documentation app and your XConnect instance
- * https://doc.sitecore.com/xp/en/developers/104/sitecore-experience-platform/walkthrough--creating-a-contact-and-an-interaction.html#establish-contact-between-the-sitecoredocumentation-app-and-your-xconnect-instance
+ * Create a contact with known identifier
+ * https://doc.sitecore.com/xp/en/developers/104/sitecore-experience-platform/walkthrough--creating-a-contact-and-an-interaction.html#create-a-contact-with-a-known-identifier
  */
-
 namespace Sitecore.Documentation
 {
     public class Program
@@ -100,8 +99,42 @@ namespace Sitecore.Documentation
             {
                 try
                 {
-                    // This is where we add content in later code samples
-                    Console.WriteLine("connection successful");
+                    // Identifier for a 'known' contact
+                    var identifier = new ContactIdentifier[]
+                    {
+                        new ContactIdentifier(
+                            "twitter",
+                            "myrtlesitecore" + Guid.NewGuid().ToString("N"),
+                            ContactIdentifierType.Known
+                        )
+                    };
+
+                    // Print out the identifier that is going to be used
+                    Console.WriteLine("Contact Identifier: " + identifier[0].Identifier);
+
+                    // Create a new contact with the identifier
+                    Contact knownContact = new Contact(identifier);
+
+                    client.AddContact(knownContact);
+
+                    // Submit contact and interaction - a total of two operations
+                    await client.SubmitAsync();
+
+                    // Get the last batch that was executed
+                    var operations = client.LastBatch;
+
+                    // Loop through operations and check status
+                    foreach (var operation in operations)
+                    {
+                        Console.WriteLine(
+                            operation.OperationType
+                            + operation.Target.GetType().ToString()
+                            + " Operation: "
+                            + operation.Status
+                        );
+                    }
+
+                    Console.ReadLine();
                 }
                 catch (XdbExecutionException ex)
                 {
