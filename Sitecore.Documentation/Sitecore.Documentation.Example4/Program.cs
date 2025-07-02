@@ -100,7 +100,7 @@ namespace Sitecore.Documentation
                 try
                 {
                     // loop multiple inserts
-                    for (int i = 1; i <= 10; i++)
+                    for (int i = 1; i <= 100; i++)
                     {
                         // Create a unique identifier for each contact
                         var identifier = new ContactIdentifier[]

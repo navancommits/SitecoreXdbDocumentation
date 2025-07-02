@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.Exam
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.Example4", "Sitecore.Documentation.Example4\Sitecore.Documentation.Example4.csproj", "{B5E96218-FF8D-4456-B58B-26B8E7099E78}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.AddRangeMapping", "Sitecore.Documentation.AddRangeMapping\Sitecore.Documentation.AddRangeMapping.csproj", "{750587EA-F2A0-438F-8E47-C985CF1B6D7C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{B5E96218-FF8D-4456-B58B-26B8E7099E78}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B5E96218-FF8D-4456-B58B-26B8E7099E78}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B5E96218-FF8D-4456-B58B-26B8E7099E78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
