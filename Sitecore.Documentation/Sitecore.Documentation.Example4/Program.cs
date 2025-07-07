@@ -100,7 +100,7 @@ namespace Sitecore.Documentation
                 try
                 {
                     // loop multiple inserts
-                    for (int i = 1; i <= 100; i++)
+                    for (int i = 1; i <= 10; i++)
                     {
                         // Create a unique identifier for each contact
                         var identifier = new ContactIdentifier[]
@@ -141,6 +141,7 @@ namespace Sitecore.Documentation
                 catch (XdbExecutionException ex)
                 {
                     // Deal with exception
+                    Console.WriteLine(ex);
                 }
             }
         }
