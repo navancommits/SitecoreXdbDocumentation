@@ -1,146 +1,94 @@
-﻿using Sitecore.XConnect;
-using Sitecore.XConnect.Client;
-using Sitecore.XConnect.Client.WebApi;
-using Sitecore.XConnect.Collection.Model;
-using Sitecore.XConnect.Schema;
-using Sitecore.Xdb.Common.Web;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
-using System.Threading.Tasks;
-/*
- * Create a contact with known identifier
- * https://doc.sitecore.com/xp/en/developers/104/sitecore-experience-platform/walkthrough--creating-a-contact-and-an-interaction.html#create-a-contact-with-a-known-identifier
- */
-namespace Sitecore.Documentation
+using System.Data.SqlClient;
+
+namespace GuidShardRangeChecker
 {
-    public class Program
+    class Program
     {
-        // From <xConnect instance>\App_Config\AppSettings.config
-        static string CERTIFICATE_OPTIONS = ConfigurationManager.AppSettings["certConnString"];
-
-        // From your installation
-        static string XCONNECT_URL = ConfigurationManager.AppSettings["xConnectUrl"];
-
-        private static void Main(string[] args)
+        static void Main(string[] args)
         {
-            MainAsync(args).ConfigureAwait(false).GetAwaiter().GetResult();
-            System.Console.ForegroundColor = ConsoleColor.DarkGreen;
-            System.Console.WriteLine("");
-            Console.WriteLine("END OF PROGRAM.");
-            Console.ReadKey();
+            //string smmConnectionString = "Data Source=localhost;Initial Catalog=ShardMapManager;Integrated Security=True";
+            string smmConnectionString = "user id=sa;password=xxxx;data source=(local);Initial Catalog=sc104gh_Xdb.Collection.ShardMapManager;Integrated Security=True;TrustServerCertificate=True";
+
+            Console.Write("Enter a GUID to test (or press Enter to generate a random one): ");
+            string input = Console.ReadLine();
+            Guid testGuid = string.IsNullOrWhiteSpace(input) ? Guid.NewGuid() : Guid.Parse(input);
+            byte[] testGuidBytes = testGuid.ToByteArray();
+
+            Console.WriteLine($"\n🔎 Testing GUID: {testGuid}");
+
+            List<(string ShardName, byte[] Min, byte[] Max)> shardRanges = GetShardRanges(smmConnectionString);
+
+            foreach (var shard in shardRanges)
+            {
+                bool inRange = CompareBytes(testGuidBytes, shard.Min) >= 0 && CompareBytes(testGuidBytes, shard.Max) < 0;
+                Console.WriteLine($"\n🔹 Shard: {shard.ShardName}");
+                Console.WriteLine($"   Min: {new Guid(PadTo16Bytes(shard.Min))}  ({BitConverter.ToString(shard.Min)})");
+                Console.WriteLine($"   Max: {new Guid(PadTo16Bytes(shard.Max))}  ({BitConverter.ToString(shard.Max)})");
+                Console.WriteLine(inRange
+                    ? "✅ GUID falls within this shard range."
+                    : "❌ GUID does NOT fall within this shard range.");
+            }
         }
 
-        private static async Task MainAsync(string[] args)
+        static List<(string ShardName, byte[] Min, byte[] Max)> GetShardRanges(string connStr)
         {
-            CertificateHttpClientHandlerModifierOptions options = CertificateHttpClientHandlerModifierOptions.Parse(CERTIFICATE_OPTIONS);
-
-            var certificateModifier = new CertificateHttpClientHandlerModifier(options);
-
-            List<IHttpClientModifier> clientModifiers = new List<IHttpClientModifier>();
-            var timeoutClientModifier = new TimeoutHttpClientModifier(new TimeSpan(0, 0, 20));
-            clientModifiers.Add(timeoutClientModifier);
-
-            var collectionClient = new CollectionWebApiClient(
-                new Uri(XCONNECT_URL + "/odata"),
-                clientModifiers,
-                new[] { certificateModifier }
-            );
-
-            var searchClient = new SearchWebApiClient(
-                new Uri(XCONNECT_URL + "/odata"),
-                clientModifiers,
-                new[] { certificateModifier }
-            );
-
-            var configurationClient = new ConfigurationWebApiClient(
-                new Uri(XCONNECT_URL + "/configuration"),
-                clientModifiers,
-                new[] { certificateModifier }
-            );
-
-            var cfg = new XConnectClientConfiguration(
-                new XdbRuntimeModel(CollectionModel.Model),
-                collectionClient,
-                searchClient,
-                configurationClient
-            );
-
-            try
+            var ranges = new List<(string, byte[], byte[])>();
+            using (var conn = new SqlConnection(connStr))
             {
-                await cfg.InitializeAsync();
+                conn.Open();
+                var cmd = new SqlCommand(@"
+                SELECT sg.DatabaseName, sm.MinValue, sm.MaxValue
+                FROM __ShardManagement.ShardMappingsGlobal sm
+                JOIN __ShardManagement.ShardsGlobal sg ON sm.ShardId = sg.ShardId
+                JOIN __ShardManagement.ShardMapsGlobal map ON sm.ShardMapId = map.ShardMapId
+                WHERE map.Name = 'ContactIdShardMap'
+                ", conn);
 
-                // Print xConnect if configuration is valid
-                var arr = new[]
+                using (var reader = cmd.ExecuteReader())
                 {
-                    @"            ______                                                       __     ",
-                    @"           /      \                                                     |  \    ",
-                    @" __    __ |  $$$$$$\  ______   _______   _______    ______    _______  _| $$_   ",
-                    @"|  \  /  \| $$   \$$ /      \ |       \ |       \  /      \  /       \|   $$ \  ",
-                    @"\$$\/  $$| $$      |  $$$$$$\| $$$$$$$\| $$$$$$$\|  $$$$$$\|  $$$$$$$ \$$$$$$   ",
-                    @" >$$  $$ | $$   __ | $$  | $$| $$  | $$| $$  | $$| $$    $$| $$        | $$ __  ",
-                    @" /  $$$$\ | $$__/  \| $$__/ $$| $$  | $$| $$  | $$| $$$$$$$$| $$_____   | $$|  \",
-                    @"|  $$ \$$\ \$$    $$ \$$    $$| $$  | $$| $$  | $$ \$$     \ \$$     \   \$$  $$",
-                    @" \$$   \$$  \$$$$$$   \$$$$$$  \$$   \$$ \$$   \$$  \$$$$$$$  \$$$$$$$    \$$$$ "
-                };
-                Console.WindowWidth = 160;
-                foreach (string line in arr)
-                    Console.WriteLine(line);
-
-            }
-            catch (XdbModelConflictException ce)
-            {
-                Console.WriteLine("ERROR:" + ce.Message);
-                return;
-            }
-
-            // Initialize a client using the validated configuration
-            using (var client = new XConnectClient(cfg))
-            {
-                try
-                {
-                    // Identifier for a 'known' contact
-                    var identifier = new ContactIdentifier[]
+                    while (reader.Read())
                     {
-                        new ContactIdentifier(
-                            "twitter",
-                            "myrtlesitecore" + Guid.NewGuid().ToString("N"),
-                            ContactIdentifierType.Known
-                        )
-                    };
-
-                    // Print out the identifier that is going to be used
-                    Console.WriteLine("Contact Identifier: " + identifier[0].Identifier);
-
-                    // Create a new contact with the identifier
-                    Contact knownContact = new Contact(identifier);
-
-                    client.AddContact(knownContact);
-
-                    // Submit contact and interaction - a total of two operations
-                    await client.SubmitAsync();
-
-                    // Get the last batch that was executed
-                    var operations = client.LastBatch;
-
-                    // Loop through operations and check status
-                    foreach (var operation in operations)
-                    {
-                        Console.WriteLine(
-                            operation.OperationType
-                            + operation.Target.GetType().ToString()
-                            + " Operation: "
-                            + operation.Status
-                        );
+                        string dbName = reader.GetString(0);
+                        byte[] min = (byte[])reader[1];
+                        byte[] max;
+                        if (reader.IsDBNull(2))
+                        {
+                            max = new Guid("FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF").ToByteArray();
+                        }
+                        else
+                        {
+                            max = (byte[])reader[2];
+                        }
+                        ranges.Add((dbName, min, max));
                     }
-
-                    Console.ReadLine();
-                }
-                catch (XdbExecutionException ex)
-                {
-                    // Deal with exception
                 }
             }
+            return ranges;
+        }
+
+        static int CompareBytes(byte[] a, byte[] b)
+        {
+            if (a == null || b == null) throw new ArgumentNullException();
+
+            byte[] a16 = PadTo16Bytes(a);
+            byte[] b16 = PadTo16Bytes(b);
+
+            for (int i = 0; i < 16; i++)
+            {
+                int cmp = a16[i].CompareTo(b16[i]);
+                if (cmp != 0) return cmp;
+            }
+            return 0;
+        }
+
+        static byte[] PadTo16Bytes(byte[] source)
+        {
+            if (source.Length == 16) return source;
+            byte[] padded = new byte[16];
+            Array.Copy(source, 0, padded, 0, source.Length);
+            return padded;
         }
     }
 }
