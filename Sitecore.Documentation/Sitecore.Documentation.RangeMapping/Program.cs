@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Configuration;
+using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
@@ -14,6 +15,9 @@ class Program
     {
         string smmConnString = ConfigurationManager.AppSettings["smmConnString"];
         string dbPwd = ConfigurationManager.AppSettings["DBPassword"];
+        string dbUser = ConfigurationManager.AppSettings["DBUser"];
+        string sqlAdminPwd = ConfigurationManager.AppSettings["SqlAdminPassword"];
+        string sqlAdminUser = ConfigurationManager.AppSettings["SqlAdminUser"];
         string shardMapManagerDBName = ConfigurationManager.AppSettings["smmDbName"];
         string toolPath = ConfigurationManager.AppSettings["shardDeploymentToolPath"];
 
@@ -86,6 +90,9 @@ class Program
         Console.Write("Enter shard server name: ");
         string server = Console.ReadLine();
 
+        Console.Write("Shard Deployment option (1/2): ");
+        string depOption = Console.ReadLine();
+
         int existingShardCount = shardMap.GetShards().Count();
 
         List<Shard> shards = shardMap.GetShards()
@@ -99,57 +106,87 @@ class Program
         for (int i = 0; i < additionalShards; i++)
         {
             string dbName = $"{shardPrefix}{existingShardCount + i}";
-            string shardConnectionString = $"Data Source={server};Initial Catalog={dbName};User ID=sa;Password={dbPwd};";
-
-            // Ensure physical shard DB exists before registering
-            using (var conn = new System.Data.SqlClient.SqlConnection($"Data Source={server};Initial Catalog=master;User ID=sa;Password={dbPwd};"))
+            switch (depOption)
             {
-                conn.Open();
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.CommandText = $"IF DB_ID('{dbName}') IS NULL CREATE DATABASE [{dbName}];";
-                    cmd.ExecuteNonQuery();
-                }
-            }
+                case "1":
+                    //create shard db - start                    
+                    string shardConnectionString = $"Data Source={server};Initial Catalog={dbName};User ID={sqlAdminUser};Password={sqlAdminPwd};";
 
-            //for contact-related db tables-start
-            //string dacpacPath = ConfigurationManager.AppSettings["xdbDacpacPath"];
+                    // Ensure physical shard DB exists before registering
+                    using (var conn = new System.Data.SqlClient.SqlConnection($"Data Source={server};Initial Catalog=master;User ID={sqlAdminUser};Password={sqlAdminPwd};"))
+                    {
+                        conn.Open();
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = $"IF DB_ID('{dbName}') IS NULL CREATE DATABASE [{dbName}];";
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    //create shard db - end
 
-            //Console.WriteLine($"Deploying XDB schema to {dbName}...");
+                    //register shard - start
+                    var builder = new System.Data.SqlClient.SqlConnectionStringBuilder
+                    {
+                        DataSource = server,
+                        InitialCatalog = dbName,
+                        UserID = dbUser,
+                        Password = dbPwd
+                    };
 
-            //var registerCommand = $@"/operation addShard " +
-            //                    $@"/connectionstring ""Data Source={server};Initial Catalog={shardMapManagerDBName};User ID=sa;Password={dbPwd}"" " +
-            //                    $@"/shardMapManagerDatabaseName  ""{shardMapManagerDBName}"" " +
-            //                    $@"/shardConnectionString ""Data Source={server};User ID=sa;Password={dbPwd}"" " +
-            //                    $@"/shardnameprefix ""{shardPrefix}"" " +
-            //                    $@"/dacpac ""{dacpacPath}""";
+                    var location = new ShardLocation(builder.DataSource, builder.InitialCatalog);
+                    var shard = shardMap.CreateShard(location);
+                    shards.Add(shard);
+                    Console.WriteLine($"Registered shard: {dbName}");
+                    //register shard - end
+                    break;
+                case "2":
+                    //for contact - related db tables - start
+                    string dacpacPath = ConfigurationManager.AppSettings["xdbDacpacPath"];
 
-            //if (!System.IO.File.Exists(toolPath))
-            //{
-            //    Console.WriteLine("ERROR: DACPAC deployment tool not found at: " + toolPath);
-            //    return;
-            //}
+                    Console.WriteLine($"Deploying XDB schema to {dbName}...");
 
-            //int exitCode = DeploySchemaAsync(toolPath, registerCommand).GetAwaiter().GetResult();
-            //if (exitCode != 0)
-            //{
-            //    Console.WriteLine($"✗ Schema registration failed for {dbName}");
-            //    return;
-            //}
-            //for contact-related db tables-end
+                    var registerCommand = $@"/operation addShard " +
+                                        $@"/connectionstring ""{smmConnString}"" " +
+                                        $@"/shardMapManagerDatabaseName  ""{shardMapManagerDBName}"" " +
+                                        $@"/shardConnectionString ""Data Source={server};User ID={dbUser};Password={dbPwd}"" " +
+                                        $@"/shardnameprefix ""{shardPrefix}"" " +
+                                        $@"/dacpac ""{dacpacPath}""";
 
-            var builder = new System.Data.SqlClient.SqlConnectionStringBuilder
-            {
-                DataSource = server,
-                InitialCatalog = dbName,
-                UserID = "sa",
-                Password = dbPwd
-            };
+                    if (!System.IO.File.Exists(toolPath))
+                        {
+                            Console.WriteLine("ERROR: DACPAC deployment tool not found at: " + toolPath);
+                            return;
+                        }
 
-            var location = new ShardLocation(builder.DataSource, builder.InitialCatalog);
-            var shard = shardMap.CreateShard(location);
-            shards.Add(shard);
-            Console.WriteLine($"Registered shard: {dbName}");
+                    int exitCode = DeploySchemaAsync(toolPath, registerCommand).GetAwaiter().GetResult();
+                    if (exitCode != 0)
+                    {
+                        Console.WriteLine($"✗ Schema registration failed for {dbName}");
+                        return;
+                    }
+                    //for contact - related db tables - end
+
+                    //create the collection user else, contacts won't be inserted - start
+                    using (var conn = new SqlConnection($"Data Source={server};Initial Catalog={dbName};User ID={sqlAdminUser};Password={sqlAdminPwd};"))
+                    {
+                        conn.Open();
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = $@"IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = '{dbUser}')
+                                        BEGIN
+                                            CREATE USER [{dbUser}];
+                                            EXEC sp_addrolemember 'db_datareader', '{dbUser}';
+                                            EXEC sp_addrolemember 'db_datawriter', '{dbUser}';
+                                            GRANT EXECUTE TO [{dbUser}];
+                                        END";
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                    //end
+                    break;
+                default:
+                    break;
+            }            
         }
 
         // Clear existing mappings in both global and local shard map manager
@@ -183,7 +220,7 @@ class Program
             {
                 // Delete from local shard mapping
                 using (var conn = new System.Data.SqlClient.SqlConnection(
-                    $"Data Source={mapping.Shard.Location.DataSource};Initial Catalog={mapping.Shard.Location.Database};User ID=sa;Password={dbPwd};"))
+                    $"Data Source={mapping.Shard.Location.DataSource};Initial Catalog={mapping.Shard.Location.Database};User ID={sqlAdminUser};Password={sqlAdminPwd};"))
                 {
                     conn.Open();
                     using (var cmd = conn.CreateCommand())
