@@ -13,6 +13,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.Exam
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.AddRangeMapping", "Sitecore.Documentation.AddRangeMapping\Sitecore.Documentation.AddRangeMapping.csproj", "{750587EA-F2A0-438F-8E47-C985CF1B6D7C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.RangeTester", "Sitecore.Documentation.RangeTester\Sitecore.Documentation.RangeTester.csproj", "{2370A102-A793-48AB-B817-CE1D594255AB}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sitecore.Documentation.RangeMapping", "Sitecore.Documentation.RangeMapping\Sitecore.Documentation.RangeMapping.csproj", "{D59D945B-B56F-4384-A5D3-99D06365F361}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +43,14 @@ Global
 		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{750587EA-F2A0-438F-8E47-C985CF1B6D7C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2370A102-A793-48AB-B817-CE1D594255AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2370A102-A793-48AB-B817-CE1D594255AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2370A102-A793-48AB-B817-CE1D594255AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2370A102-A793-48AB-B817-CE1D594255AB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D59D945B-B56F-4384-A5D3-99D06365F361}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D59D945B-B56F-4384-A5D3-99D06365F361}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D59D945B-B56F-4384-A5D3-99D06365F361}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D59D945B-B56F-4384-A5D3-99D06365F361}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
