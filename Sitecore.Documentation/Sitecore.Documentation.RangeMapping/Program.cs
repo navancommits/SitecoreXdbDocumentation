@@ -1,4 +1,5 @@
-﻿using Microsoft.Azure.SqlDatabase.ElasticScale.ShardManagement;
+﻿using Microsoft.Azure.SqlDatabase.ElasticScale.Query;
+using Microsoft.Azure.SqlDatabase.ElasticScale.ShardManagement;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
@@ -6,6 +7,7 @@ using System.Data.SqlClient;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Transactions;
@@ -25,28 +27,41 @@ class Program
     static string targetDbName = ConfigurationManager.AppSettings["targetShard"];
     static string shardPrefix;
     static string shardMapName = "ContactIdShardMap"; //ConfigurationManager.AppSettings["shardMapName"];
+    static string startSrcHex,startTarHex;
+    static string endSrcHex,endTarHex;
+    static byte startByte ;
+    static byte endByte;
+    // Convert to single-byte arrays
+    static byte[] rangeStart;
+    static byte[] rangeEnd;
     static void Main()
     {
         ShardMapManager smm = ShardMapManagerFactory.GetSqlShardMapManager(smmConnString, ShardMapManagerLoadPolicy.Lazy);
         Console.Write("\nEnter Shard Option (1/2): ");
         int shardOption = int.Parse(Console.ReadLine());
 
-        switch (shardOption)
-        {
-            case 1:
-                //Split when no data
-                AddShardtoDefaultSetup(smm);
-                break;
-            case 2:
-                GetInputs();
-                //Pre-requisite: Target Shard db must be present with schema
-                SetupDBwithSchema(targetDbName);
-                //Split when there is data
-                ShardExistingSetup(smm);
-                break;
-            default:
-                break;
-        }
+        //using (var scope = new TransactionScope(TransactionScopeOption.Required))
+        //{
+
+            switch (shardOption)
+            {
+                case 1:
+                    //Split when no data
+                    AddShardtoNewSetup(smm);
+                    break;
+                case 2:
+                    GetInputs();
+                    //Pre-requisite: Target Shard db must be present with schema
+                    SetupDBwithSchema(targetDbName);
+                    //Split when there is data
+                    ShardExistingSetup(smm);
+                    break;
+                default:
+                    break;
+            }
+
+            //scope.Complete();
+        //}
     }
 
     static void GetInputs()
@@ -65,7 +80,7 @@ class Program
         shardPrefix = Console.ReadLine();
     }
 
-    static void ShardExistingSetup(ShardMapManager smm)
+    static void CreateNewRangeMappings(ShardMapManager smm)
     {
         var shardMap1 = smm.GetRangeShardMap<byte[]>("ContactIdShardMap");
         var shardMap2 = smm.GetRangeShardMap<byte[]>("ContactIdentifiersIndexShardMap");
@@ -75,24 +90,24 @@ class Program
         var targetLocation = new ShardLocation(server, targetDbName);
 
         Console.Write("Enter new Source hex range min value: ");
-        string startSrcHex = Console.ReadLine().Replace("0x", "");
+        startSrcHex = Console.ReadLine().Replace("0x", "");
 
         Console.Write("Enter new Source hex range max value: ");
-        string endSrcHex = Console.ReadLine().Replace("0x", "");
+        endSrcHex = Console.ReadLine().Replace("0x", "");
 
         Console.Write("Enter Target hex range min value: ");
-        string startTarHex = Console.ReadLine().Replace("0x", "");
+        startTarHex = Console.ReadLine().Replace("0x", "");
 
         Console.Write("Enter Target hex range max value: ");
-        string endTarHex = Console.ReadLine().Replace("0x", "");
+        endTarHex = Console.ReadLine().Replace("0x", "");
 
         // Parse hex strings into bytes
-        byte startByte = byte.Parse(startTarHex, NumberStyles.HexNumber);
-        byte endByte = byte.Parse(endTarHex, NumberStyles.HexNumber);
+        startByte = byte.Parse(startTarHex, NumberStyles.HexNumber);
+        endByte = byte.Parse(endTarHex, NumberStyles.HexNumber);
 
         // Convert to single-byte arrays
-        byte[] rangeStart = new byte[] { startByte };
-        byte[] rangeEnd = new byte[] { endByte };
+        rangeStart = new byte[] { startByte };
+        rangeEnd = new byte[] { endByte };
 
         // Debug output
         Console.WriteLine($"Range Start: 0x{rangeStart[0]:X2}");
@@ -153,6 +168,11 @@ class Program
 
         var newTarMapping3 = shardMap3.CreateRangeMapping(
             new Range<byte[]>(rangeStart, rangeEnd), targetShard3);
+    }
+
+    static void ShardExistingSetup(ShardMapManager smm)
+    {
+        CreateNewRangeMappings(smm);
 
         Console.WriteLine("Migrating maps in selected range...");
 
@@ -376,6 +396,95 @@ class Program
         Console.WriteLine("Split complete.");
     }
 
+    static void AddShardtoNewSetup(ShardMapManager smm)
+    {
+
+        Console.Write("Enter shard server name: ");
+        server = Console.ReadLine();
+
+        // Step 1: List available shard maps
+        var shardMaps = smm.GetShardMaps()
+            .ToList();
+
+        if (!shardMaps.Any())
+        {
+            Console.WriteLine("No shard maps found. You can create one now.");
+        }
+        else
+        {
+            Console.WriteLine("Available Shard Maps:");
+            RangeShardMap<byte[]> shardMap = null;
+            Console.WriteLine("\nExisting Mappings:");
+            for (int i = 0; i < shardMaps.Count; i++)
+            {
+                //Console.WriteLine($"{i + 1}. {shardMaps[i].Name}");
+                // Step 2: List existing mappings in the selected shard map
+                smm.TryGetRangeShardMap<byte[]>(shardMaps[i].Name, out shardMap);
+                Console.WriteLine($"{shardMap.Name}: ");
+                var mappings = shardMap.GetMappings();
+                if (mappings.Any())
+                {
+                    foreach (var mapping in mappings)
+                    {
+                        Console.WriteLine($"- Range [{ByteToHex(mapping.Value.Low)} - {ByteToHex(mapping.Value.High)}) -> {mapping.Shard.Location.Database}");
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("No mappings registered yet.");
+                }
+            }
+
+
+            // Step 3: Distribute new shards evenly
+            Console.Write("\nEnter number of additional shards to map: ");
+            int additionalShards = int.Parse(Console.ReadLine());
+
+            Console.Write("Enter shard name prefix (e.g., sc104k_Xdb.Collection.Shard): ");
+            shardPrefix = Console.ReadLine();
+
+            DeleteGlobalMappings(shardMap);            
+            
+            int existingShardCount = shardMap.GetShards().Count();
+
+            Console.WriteLine("\nDeleting existing local mappings....");
+            for (int i = 0; i < existingShardCount; i++)
+            {
+                string dbName = $"{shardPrefix}{i}";
+                DeleteLocalMappings(dbName);
+            }
+            Console.WriteLine("\nDeleted existing local mappings....");
+
+
+            List<Shard> shards = shardMap.GetShards()
+            .OrderBy(s =>
+            {
+                var dbName = s.Location.Database;
+                var digits = new string(dbName.Reverse().TakeWhile(char.IsDigit).Reverse().ToArray());
+                return int.TryParse(digits, out int num) ? num : int.MaxValue;
+            })
+            .ToList();
+
+
+            for (int i = 0; i < additionalShards; i++)
+            {
+                string dbName = $"{shardPrefix}{existingShardCount + i}";
+
+                //for contact - related db tables - start
+                SetupDBwithSchema(dbName);
+
+            }
+
+            for (int i = 0; i < shardMaps.Count; i++)
+            {
+                //add new mapping for each map
+                smm.TryGetRangeShardMap<byte[]>(shardMaps[i].Name, out shardMap);
+                CreateRangeMappingforShards(shards, shardMap);
+            }
+            
+        }
+    }
+
     static void AddShardtoDefaultSetup(ShardMapManager smm)
     {
         // Step 1: List available shard maps
@@ -456,8 +565,6 @@ class Program
         })
         .ToList();
 
-        using (var scope = new TransactionScope(TransactionScopeOption.Required))
-        {
 
             for (int i = 0; i < additionalShards; i++)
             {
@@ -527,7 +634,37 @@ class Program
 
                 Console.WriteLine($"Mapped range [{ByteToHex(minBytes)} - {ByteToHex(maxBytes)}) to {shards[i].Location.Database}");
             }
-            scope.Complete(); // Commits the distributed transaction
+    }
+
+    static void CreateRangeMappingforShards(List<Shard> shards, RangeShardMap<byte[]> shardMap)
+    {
+        shards.Clear();
+        shards = shardMap.GetShards()
+        .OrderBy(s =>
+        {
+            var dbName = s.Location.Database;
+            var digits = new string(dbName.Reverse().TakeWhile(char.IsDigit).Reverse().ToArray());
+            return int.TryParse(digits, out int num) ? num : int.MaxValue;
+        })
+        .ToList(); ;
+        int totalShards = shardMap.GetShards().Count();
+
+        // Full byte range: 0x00 to 0xFF + 1
+        int totalRange = 256;
+        int rangeSize = totalRange / totalShards;
+        // Recreate evenly distributed mappings
+        for (int i = 0; i < totalShards; i++)
+        {
+            byte start = (byte)(i * rangeSize);
+            byte end = (i == totalShards - 1) ? (byte)0xFF : (byte)((i + 1) * rangeSize);
+
+            byte[] minBytes = new byte[] { start };
+            byte[] maxBytes = (i == totalShards - 1) ? null : new byte[] { end }; // null = max
+
+            var range = new Range<byte[]>(minBytes, maxBytes);
+            shardMap.CreateRangeMapping(range, shards[i]);
+
+            Console.WriteLine($"Mapped range [{ByteToHex(minBytes)} - {ByteToHex(maxBytes)}) to {shards[i].Location.Database}");
         }
     }
 
@@ -596,6 +733,34 @@ class Program
                 Console.WriteLine($"Deleted global mappings");
             }
         }
+    }
+
+    static void DeleteLocalMappings(string dbName)
+    {
+            try
+            {
+                // Delete from local shard mapping
+                using (var conn = new System.Data.SqlClient.SqlConnection(
+                    $"Data Source={server};Initial Catalog={dbName};User ID={sqlAdminUser};Password={sqlAdminPwd};"))
+                {
+                    conn.Open();
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        
+                        cmd.CommandText = @"
+                        DELETE FROM __ShardManagement.ShardMappingsLocal
+                        ";
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                Console.WriteLine($"Deleted from  local mapping tables  in {dbName}");
+            }
+
+            catch (Exception ex)
+            {
+                Console.WriteLine($"✗ Failed to delete mapping from {dbName}: {ex.Message}");
+            }
     }
 
 
