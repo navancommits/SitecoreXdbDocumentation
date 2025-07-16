@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Transactions;
 using System.Xml.Linq;
@@ -38,6 +39,8 @@ class Program
     {
         ShardMapManager smm = ShardMapManagerFactory.GetSqlShardMapManager(smmConnString, ShardMapManagerLoadPolicy.Lazy);
         Console.Write("\nEnter Shard Option (1/2): ");
+        Console.Write("\n1. Shard a blank setup ");
+        Console.WriteLine("\n2. Shard a setup with existing contacts ");
         int shardOption = int.Parse(Console.ReadLine());
 
         //using (var scope = new TransactionScope(TransactionScopeOption.Required))
@@ -76,8 +79,26 @@ class Program
         Console.Write("Provide Target Shard DB Name: ");
         targetDbName = Console.ReadLine();
 
-        Console.Write("Enter shard name prefix (e.g., sc104k_Xdb.Collection.Shard): ");
-        shardPrefix = Console.ReadLine();
+        //Console.Write("Enter shard name prefix (e.g., sc104k_Xdb.Collection.Shard): ");
+        //shardPrefix = Console.ReadLine();
+        shardPrefix = ExtractShardPrefix(sourceDbName);
+    }
+
+    static string ExtractShardPrefix(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+            return string.Empty;
+
+        // Find the last occurrence of ".Shard" followed by digits
+        var match = Regex.Match(input, @"^(.+\.Shard)\d+$");
+
+        if (match.Success)
+        {
+            return match.Groups[1].Value;
+        }
+
+        // If pattern doesn't match, return original string or empty based on your requirements
+        return string.Empty;
     }
 
     static void CreateNewRangeMappings(ShardMapManager smm)
@@ -406,6 +427,8 @@ class Program
         var shardMaps = smm.GetShardMaps()
             .ToList();
 
+        var tmpDbName = string.Empty;
+
         if (!shardMaps.Any())
         {
             Console.WriteLine("No shard maps found. You can create one now.");
@@ -427,7 +450,9 @@ class Program
                     foreach (var mapping in mappings)
                     {
                         Console.WriteLine($"- Range [{ByteToHex(mapping.Value.Low)} - {ByteToHex(mapping.Value.High)}) -> {mapping.Shard.Location.Database}");
+                        tmpDbName = mapping.Shard.Location.Database;
                     }
+                    
                 }
                 else
                 {
@@ -440,8 +465,9 @@ class Program
             Console.Write("\nEnter number of additional shards to map: ");
             int additionalShards = int.Parse(Console.ReadLine());
 
-            Console.Write("Enter shard name prefix (e.g., sc104k_Xdb.Collection.Shard): ");
-            shardPrefix = Console.ReadLine();
+            //Console.Write("Enter shard name prefix (e.g., sc104k_Xdb.Collection.Shard): ");
+            //shardPrefix = Console.ReadLine();
+            shardPrefix = ExtractShardPrefix(tmpDbName);
 
             DeleteGlobalMappings(shardMap);            
             
